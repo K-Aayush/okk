@@ -1,0 +1,77 @@
+<head>
+  <style type="text/css">
+    body {
+      font-size: 14px;
+    }
+    .title {
+      font-size: 18px;
+      text-align: center;
+      padding-top: 20px;
+      padding-bottom: 20px;
+    }
+    .subject {
+      font-size: 16px;
+      text-align: center;
+      padding-bottom: 20px;
+    }
+    .subject span:not(:first-child) {
+      margin-left: 10px;
+    }
+    .time-table {
+      width: 100%;
+      padding: 10px 10px;
+      font-size: 14px;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    .time-table th {
+      font-weight: 600;
+    }
+    .time-table th,
+    .time-table td {
+      border: 1px solid #333; /* Add border to cells */
+      padding: 5px; /* Optional: add some padding */
+    }
+
+    .bold {
+      font-weight: bold;
+    }
+    .blue {
+      color: #4472c4;
+    }
+    .gray {
+      color: #9d9d9d;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">
+      <span class="bold">Month End Report:</span>
+      <%=reportMonth%>
+    </div>
+    <div class="subject">
+      <span class="bold">Patient: </span><%=patientName%>
+      <span class="bold">ID#: </span><%=patientID%>
+      <span class="bold">DOB: </span><%=patientDOB%>
+    </div>
+  </div>
+  <table class="time-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Time</th>
+        <th>Task</th>
+        <th>Consulting Provider</th>
+        <th>Duration</th>
+      </tr>
+    </thead>
+    <% reportData.forEach(function(item) { %>
+    <tr>
+      <% item.forEach(function(subItem) { %>
+      <td><%=subItem%></td>
+      <% }); %>
+    </tr>
+    <% }); %>
+  </table>
+</body>
