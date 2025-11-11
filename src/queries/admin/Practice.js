@@ -69,18 +69,24 @@ export default [
           },
         },
         { $unwind: '$user' },
+        {
+          $lookup: {
+            from: 'providerpractices',
+            localField: 'user.activeProviderPractice',
+            foreignField: '_id',
+            as: 'activeProviderPractice',
+          },
+        },
+        { $unwind: '$activeProviderPractice' },
+        {
+          $match: {
+            'activeProviderPractice.practice':
+              mongoose.Types.ObjectId(practiceId),
+          },
+        },
       ];
       if (practice.isGazuntitePractice) {
         aggregate = aggregate.concat([
-          {
-            $lookup: {
-              from: 'providerpractices',
-              localField: 'user.activeProviderPractice',
-              foreignField: '_id',
-              as: 'activeProviderPractice',
-            },
-          },
-          { $unwind: '$activeProviderPractice' },
           {
             $lookup: {
               from: 'providerpractices',

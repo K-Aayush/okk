@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import axios from 'axios';
+import * as Sentry from '@sentry/node';
 import {
   DirectMessageInboxItem,
   PatientPractice,
@@ -77,7 +78,12 @@ class MaxMDService {
         socketManager.notifyUsers(providers, SOCKET_EVENTS.DIRECT_MESSAGES, {});
       }
     } catch (error) {
-      console.error('MaxMDService fetchUnreadMessages error:', error);
+      Sentry.captureException(error, {
+        extra: {
+          message: 'Error in MaxMD fetch message',
+          detail: JSON.stringify(error),
+        },
+      });
       return null;
     }
   }
@@ -101,10 +107,24 @@ class MaxMDService {
         if (attachment.contentType.toLowerCase().includes('text/xml')) {
           //MaxMD attachment.contentType format is 'text/xml; name=**filename.xml**'
           const attachmentBodyText = attachmentBody.toString();
-          const newBodyText = attachmentBodyText.replace(
-            '<?xml-stylesheet href="CCDA.xsl" type="text/xsl"?>',
-            '<?xml-stylesheet href="/cda-viewer/cda.xsl" type="text/xsl"?>'
-          );
+          let newBodyText;
+          const startingXSSIndex =
+            attachmentBodyText.indexOf('<?xml-stylesheet');
+          if (startingXSSIndex > 0) {
+            const nextString = attachmentBodyText.slice(startingXSSIndex);
+            const endingXSSIndex = nextString.indexOf('?>') + 2;
+            newBodyText =
+              attachmentBodyText.slice(0, startingXSSIndex) +
+              '<?xml-stylesheet href="/cda-viewer/cda.xsl" type="text/xsl"?>' +
+              nextString.slice(endingXSSIndex);
+          } else {
+            const endingHeadCloseTagIndex =
+              attachmentBodyText.indexOf('?>') + 2;
+            newBodyText =
+              attachmentBodyText.slice(0, endingHeadCloseTagIndex) +
+              '<?xml-stylesheet href="/cda-viewer/cda.xsl" type="text/xsl"?>' +
+              attachmentBodyText.slice(endingHeadCloseTagIndex);
+          }
           attachmentBody = Buffer.from(newBodyText);
         }
 
@@ -137,7 +157,13 @@ class MaxMDService {
           break;
         }
       } catch (err) {
-        console.error(err, ' aws upload failed');
+        Sentry.captureException(err, {
+          extra: {
+            message: 'Error in aws upload',
+            payload: attachment,
+            detail: JSON.stringify(err),
+          },
+        });
         return null;
       }
     }
@@ -259,6 +285,13 @@ class MaxMDService {
         dob: patientDOB,
       };
     } catch (error) {
+      Sentry.captureException(error, {
+        extra: {
+          message: 'Error in process pdf attachment',
+          payload: content,
+          detail: JSON.stringify(error),
+        },
+      });
       return null;
     }
   }
@@ -307,7 +340,6 @@ class MaxMDService {
 
   async sendMessage(to, info, buffer) {
     if (!this.username || !this.password) {
-      console.error('MaxMD direct messaging api login failed!');
       return Promise.reject('MaxMD log in failed');
     }
     const url = `${this.apiBaseUri}/Send`;
@@ -342,13 +374,22 @@ class MaxMDService {
       const response = await axios(options);
       return response.data;
     } catch (error) {
-      console.error('MaxMDService sendMessage error:', error);
+      Sentry.captureException(error, {
+        extra: {
+          message: 'Error in MaxMD send message',
+          payload: { to, info, buffer },
+          detail: JSON.stringify(error),
+        },
+      });
       return null;
     }
   }
 
   _extractId(idString) {
-    return idString.substr(idString.indexOf('E-') + 2);
+    if (idString.indexOf('E-') >= 0) {
+      return idString.substr(idString.indexOf('E-') + 2);
+    }
+    return idString;
   }
 
   _parseBirth(birthString) {
@@ -372,6 +413,13 @@ class MaxMDService {
         zipcode: addr.postalCode[0],
       };
     } catch (e) {
+      Sentry.captureException(e, {
+        extra: {
+          message: 'Error in parse address of MaxMD service',
+          payload: addr,
+          detail: JSON.stringify(e),
+        },
+      });
       return {};
     }
   }
@@ -411,14 +459,16 @@ class MaxMDService {
   }
 
   _extractReferralContent(components) {
-    const tableRows = components['Plan of Treatment'].table[0].tbody[0].tr;
+    const tableRows = components['Plan of Treatment']?.table[0]?.tbody[0]?.tr;
     let referralContent = '';
-    for (let row of tableRows) {
-      if (row.td[0].content && row.td[0].content[0]['_'] === 'Referral') {
-        if (row.td[1].content && row.td[1].content[0]) {
-          referralContent = row.td[1].content[0]['_'];
+    if (tableRows) {
+      for (let row of tableRows) {
+        if (row.td[0].content && row.td[0].content[0]['_'] === 'Referral') {
+          if (row.td[1].content && row.td[1].content[0]) {
+            referralContent = row.td[1].content[0]['_'];
+          }
+          break;
         }
-        break;
       }
     }
     return referralContent;

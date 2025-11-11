@@ -3,6 +3,7 @@ import adminUserQueries from './User';
 import specialtyQueries from './Specialty';
 import practiceQueries from './Practice';
 import directMessageQueries from './DirectMessage';
+import { GraphQLUserError } from '../../errors';
 
 const allQueries = [
   ...adminAuthQueries,
@@ -14,7 +15,7 @@ const allQueries = [
 
 const authenticate = (func, isPublic) => (args, context) => {
   if (!isPublic && !context.user) {
-    throw new Error('Invalid Auth!');
+    throw new GraphQLUserError('Invalid Auth!');
   }
   return func(args, context);
 };

@@ -82,6 +82,20 @@ export const sendOnboardingEmail = async (
   });
 };
 
+export const sendJoinPracticeRequestAcceptedEmail = async (
+  to,
+  { practice, link }
+) => {
+  await sendWithTemplate({
+    templateId: 'd-842be9102b1c4bf6bbf656790d618753',
+    to,
+    data: {
+      practice,
+      link,
+    },
+  });
+};
+
 export const sendContactEmail = async (to, { subject, header, line, link }) => {
   await sendWithTemplate({
     templateId: 'd-9ab756e9e7344c76b5eb649d9f77a35c',

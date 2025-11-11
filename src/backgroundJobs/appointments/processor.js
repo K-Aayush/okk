@@ -1,5 +1,6 @@
 import QueueService from './queue';
 import JobFactory from './factory';
+import * as Sentry from '@sentry/node';
 
 export default class {
   static jobQueue;
@@ -34,24 +35,25 @@ export default class {
 
     this.jobQueue
       .on('failed', (job, error) => {
-        console.error(error);
-
         // Report error
-
-        // const type = job.data.meta.type;
-        // const data = job.data;
-        // Raven.captureException(
-        //   new Error(
-        //     `Job failed of type "${type}" and data:\n ${JSON.stringify(data)}`
-        //   )
-        // );
-        // Raven.captureException(error);
+        const type = job.data.meta.type;
+        const data = job.data;
+        Sentry.captureException(error, {
+          extra: {
+            message: `Job failed of type "${type}"`,
+            payload: data,
+            detail: JSON.stringify(error),
+          },
+        });
       })
       .on('error', (error) => {
-        console.error(error);
-
         // Report error
-        // Raven.captureException(error);
+        Sentry.captureException(error, {
+          extra: {
+            message: `Appointment job queue error`,
+            detail: JSON.stringify(error),
+          },
+        });
       });
   }
 }

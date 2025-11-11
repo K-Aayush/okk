@@ -1,3 +1,5 @@
+import * as Sentry from '@sentry/node';
+
 export class AbstractJobImplementation {
   static isCronJob = false;
   static type;
@@ -67,7 +69,14 @@ export class AbstractJobImplementation {
       }
       return true;
     } catch (error) {
-      console.error(error);
+      // Report Error
+      Sentry.captureException(error, {
+        extra: {
+          message: `Job remove error of type ${job.data.meta.type}`,
+          payload: job.data,
+          detail: JSON.stringify(error),
+        },
+      });
     }
     return false;
   }

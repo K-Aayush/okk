@@ -55,17 +55,18 @@ export default `
     address: AddressInput
     specialty: String
   }
+    
+  input NotificationInput {
+    email: JSONObject
+    text: JSONObject
+    voice: JSONObject
+  }
 
   input ProviderInput {
     user: UserInput!
     npi: String
     memberDesignation: String
-  }
-
-  input NotificationInput {
-    email: JSONObject
-    text: JSONObject
-    voice: JSONObject
+    notifications: NotificationInput
   }
 
   input PatientInput {

@@ -25,8 +25,17 @@ import {
 } from '../utils';
 import socketManager from '../services/socket-manager';
 import SOCKET_EVENTS from '../services/socket-manager/constants';
-import { sendContactEmail, sendOnboardingEmail } from '../services/mailer';
-import { sendContactSMS, sendOnboardingSMS } from '../services/twilio';
+import {
+  sendContactEmail,
+  sendJoinPracticeRequestAcceptedEmail,
+  sendOnboardingEmail,
+} from '../services/mailer';
+import {
+  sendContactSMS,
+  sendJoinPracticeRequestAcceptedSMS,
+  sendOnboardingSMS,
+} from '../services/twilio';
+import * as Sentry from '@sentry/node';
 
 const getCategorizedInvites = async (
   user,
@@ -224,7 +233,15 @@ export default [
             );
             allInvites.push(invites);
           } catch (err) {
-            console.error(err);
+            // Report error
+            Sentry.captureException(err, {
+              message: 'All Invites error',
+              payload: {
+                page,
+                pageSize,
+              },
+              detail: JSON.stringify(err),
+            });
           }
         }
       }
@@ -440,7 +457,14 @@ export default [
             sms && sendContactSMS(sms, params);
           }
         } catch (err) {
-          console.error(err);
+          // Report error
+          Sentry.captureException(err, {
+            extra: {
+              message: 'inviteExistingUsersToGroup error',
+              payload: { inviteeIds, groupId, isPractice },
+              detail: JSON.stringify(err),
+            },
+          });
         }
 
         socketManager.sendMessage(inviteeId, SOCKET_EVENTS.INVITE_UPDATE);
@@ -911,6 +935,7 @@ export default [
             {
               practice: invite.practice,
               user: member,
+              deactivated: false,
             },
             {},
             {
@@ -918,8 +943,24 @@ export default [
               new: true,
             }
           );
-          member.activeProviderPractice = pp;
-          await member.save();
+
+          // Send notification
+          const { email, sms } = await getNotificationInfo(member);
+          email &&
+            sendJoinPracticeRequestAcceptedEmail(email, {
+              practice: invite.practice.name,
+              link: process.env.HOST_URL_PROVIDER,
+            });
+          sms &&
+            sendJoinPracticeRequestAcceptedSMS(sms, {
+              practice: invite.practice.name,
+              link: process.env.HOST_URL_PROVIDER,
+            });
+
+          if (!member.activeProviderPractice) {
+            member.activeProviderPractice = pp;
+            await member.save();
+          }
         }
       }
       // Group Join

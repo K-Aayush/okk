@@ -30,6 +30,20 @@ export const sendOnboardingSMS = async (to, { header, line, link }) => {
   sendMessage(to, message);
 };
 
+export const sendJoinPracticeRequestAcceptedSMS = async (
+  to,
+  { practice, link }
+) => {
+  const message = `
+    Gazuntite Notification
+
+    Your reuqest to join ${practice} has been accepted.
+    You can login to your account to complete the registration at ${link}.
+  `;
+
+  sendMessage(to, message);
+};
+
 export const sendContactSMS = async (to, { header, line, link }) => {
   const message = `
     ${header}

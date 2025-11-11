@@ -17,17 +17,18 @@ class DirectMessageFetchInboxJob extends DirectMessageJob {
   }
 
   async run() {
-    try {
-      // new DataMotionService().fetchUnreadMessages();
-      const specialties = await Specialty.find().lean();
-      for (const specialty of specialties) {
-        if (specialty.title.toLowerCase() === 'pcp') {
-          continue;
-        }
-        const service = new MaxMDService(specialty.dmAddress, specialty.title);
-        await service.fetchUnreadMessages();
+    // new DataMotionService().fetchUnreadMessages();
+    const specialties = await Specialty.find().lean();
+    for (const specialty of specialties) {
+      if (specialty.title.toLowerCase() === 'pcp') {
+        continue;
       }
-    } catch (error) {}
+      if (!specialty.dmAddress || specialty.dmAddress.length === 0) {
+        continue;
+      }
+      const service = new MaxMDService(specialty.dmAddress, specialty.title);
+      await service.fetchUnreadMessages();
+    }
   }
 }
 

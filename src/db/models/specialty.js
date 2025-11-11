@@ -10,7 +10,6 @@ const SpecialtySchema = new Schema(
     dmAddress: {
       type: String,
       match: [/^\S+@\S+\.\S+$/, 'Email is not a valid format'],
-      unique: true,
       trim: true,
       lowercase: true,
     },

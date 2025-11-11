@@ -57,79 +57,71 @@ class AppointmentReminderJob extends AppointmentJob {
       users.push(appointment.patient);
     }
 
-    try {
-      for (let i = 0; i < 2; i++) {
-        const otherUser = users[(i + 1) % 2];
-        const user = users[i];
+    for (let i = 0; i < 2; i++) {
+      const otherUser = users[(i + 1) % 2];
+      const user = users[i];
 
-        const practiceName =
-          otherUser.role === 'patient'
-            ? user.activeProviderPractice.practice.name
-            : otherUser.activeProviderPractice.practice.name;
+      const practiceName =
+        otherUser.role === 'patient'
+          ? user.activeProviderPractice.practice.name
+          : otherUser.activeProviderPractice.practice.name;
 
-        const time = moment.tz(appointment.time, user.timezone);
-        const timeString = time.format('MM-DD-YYYY, ddd, hh:mm a z');
-        const meetToken = appointment.accessTokens?.find(
-          (token) => token.user.toString() === user._id.toString()
-        );
-        const meetUrl = await buildPracticeUrlForUser(
-          `/join-call?token=${encodeURIComponent(meetToken?.token)}`,
-          user
-        );
-        const portalUrl = await buildPracticeUrlForUser(`/`, user);
+      const time = moment.tz(appointment.time, user.timezone);
+      const timeString = time.format('MM-DD-YYYY, ddd, hh:mm a z');
+      const meetToken = appointment.accessTokens?.find(
+        (token) => token.user.toString() === user._id.toString()
+      );
+      const meetUrl = await buildPracticeUrlForUser(
+        `/join-call?token=${encodeURIComponent(meetToken?.token)}`,
+        user
+      );
+      const portalUrl = await buildPracticeUrlForUser(`/`, user);
 
-        const { googleLink } = createCalendarLinks({
-          title: `${practiceName} appointment with ${formatTitleAndName(
-            otherUser
-          )}`,
-          description: 'Call or Video appointment',
-          start: new Date(appointment.time),
-          duration: [5, 'minute'],
-          guests: [],
-        });
+      const { googleLink } = createCalendarLinks({
+        title: `${practiceName} appointment with ${formatTitleAndName(
+          otherUser
+        )}`,
+        description: 'Call or Video appointment',
+        start: new Date(appointment.time),
+        duration: [5, 'minute'],
+        guests: [],
+      });
 
-        const { email, sms } = await getNotificationInfo(user);
+      const { email, sms } = await getNotificationInfo(user);
 
-        // disable notification for patient
-        if (user.role === 'provider') {
-          email &&
-            (await sendAppointmentReminderNowEmail(email, practiceName, {
-              subject: `Don't forget your ${practiceName} appointment with ${formatTitleAndName(
-                otherUser
-              )} is NOW`,
-              header: practiceName,
-              body: `${practiceName} appointment <span style="background-color:${YELLOW}">NOW</span>`,
-              cardHeader: `Call or Video appointment with ${formatTitleAndName(
-                otherUser
-              )}`,
-              cardBody1: `${practiceName} appointment`,
-              cardBody2: `<span style="background-color:${YELLOW}">NOW:</span> ${timeString}`,
-              portalUrl,
-              calendarUrl: googleLink,
-            }));
-          sms &&
-            (await sendAppointmentReminderNowSMS(sms, {
-              header: `Don't forget your ${practiceName} appointment with ${formatTitleAndName(
-                otherUser
-              )} is NOW`,
-              time: timeString,
-              portalUrl,
-              calendarUrl: googleLink,
-            }));
-        }
-
-        socketManager.sendMessage(
-          user._id,
-          SOCKET_EVENTS.APPOINTMENT_REMINDER,
-          {
-            appointment,
-            user: otherUser,
-            patient: appointment.patient,
-          }
-        );
+      // disable notification for patient
+      if (user.role === 'provider') {
+        email &&
+          (await sendAppointmentReminderNowEmail(email, practiceName, {
+            subject: `Don't forget your ${practiceName} appointment with ${formatTitleAndName(
+              otherUser
+            )} is NOW`,
+            header: practiceName,
+            body: `${practiceName} appointment <span style="background-color:${YELLOW}">NOW</span>`,
+            cardHeader: `Call or Video appointment with ${formatTitleAndName(
+              otherUser
+            )}`,
+            cardBody1: `${practiceName} appointment`,
+            cardBody2: `<span style="background-color:${YELLOW}">NOW:</span> ${timeString}`,
+            portalUrl,
+            calendarUrl: googleLink,
+          }));
+        sms &&
+          (await sendAppointmentReminderNowSMS(sms, {
+            header: `Don't forget your ${practiceName} appointment with ${formatTitleAndName(
+              otherUser
+            )} is NOW`,
+            time: timeString,
+            portalUrl,
+            calendarUrl: googleLink,
+          }));
       }
-    } catch (error) {
-      console.error('Error in appointment reminder job', error);
+
+      socketManager.sendMessage(user._id, SOCKET_EVENTS.APPOINTMENT_REMINDER, {
+        appointment,
+        user: otherUser,
+        patient: appointment.patient,
+      });
     }
   }
 }

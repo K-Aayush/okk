@@ -270,6 +270,15 @@ export const createRecord = async (record, createBackgroundJob) => {
             });
           }
         }
+        // Update call record according to report
+        await Call.findByIdAndUpdate(
+          item.entityId,
+          {
+            startTime: new Date(item.startedAt * 1000),
+            endedAt: new Date(item.endedAt * 1000),
+          },
+          { session }
+        );
       }
     }
     if (pstnItems.length > 0) {

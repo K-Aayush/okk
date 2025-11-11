@@ -10,9 +10,22 @@ export default `
     dob: String
   }
 
+  type DirectMessageNoteShare {
+    by: ID
+    with: ID
+    at: Date
+  }
+
+  type DirectMessageDMShare {
+    sharedAt: Date
+    to: ID
+  }
+
   type DirectMessageNoteInfo {
     _id: ID
     creator: ID
+    shares: [DirectMessageNoteShare]
+    directMessageShare: [DirectMessageDMShare]
   }
 
   type DirectMessage {

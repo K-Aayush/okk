@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start:dev": "OPENSSL_CONF=\\dev\\null nodemon --import=extensionless/register ./index.js",
+    "start:dev": "nodemon --import=extensionless/register ./index.js",
     "start": "OPENSSL_CONF=\\dev\\null node --import=extensionless/register ./index.js",
     "start:stage": "OPENSSL_CONF=\\dev\\null NODE_ENV=stage nodemon --import=extensionless/register ./index.js"
   },
@@ -20,10 +20,11 @@
     "@bull-board/express": "^3.8.1",
     "@graphql-tools/schema": "^8.2.0",
     "@sendgrid/mail": "^7.4.4",
+    "@sentry/node": "^10.20.0",
     "axios": "^0.21.1",
     "bcryptjs": "^2.4.3",
     "bull": "^4.1.4",
-    "calendar-link": "",
+    "calendar-link": "git+https://git@github.com/GZLLC/calendar-link.git",
     "cors": "^2.8.5",
     "dotenv": "^8.2.0",
     "ejs": "^3.1.6",

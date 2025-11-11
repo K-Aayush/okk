@@ -1,23 +1,24 @@
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import axios from "axios";
-import jwkToPem from "jwk-to-pem";
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import axios from 'axios';
+import jwkToPem from 'jwk-to-pem';
 
-import { PendingUser, User, Practice, ProviderPractice } from "../db";
+import { PendingUser, User, Practice, ProviderPractice } from '../db';
 import {
   createAuthResponse,
   createAuthError,
   checkDuplicatedInfo,
   isPharmacist,
   getFullName,
-} from "../utils";
-import { sendMessage } from "../services/twilio";
+} from '../utils';
+import { sendMessage } from '../services/twilio';
 import {
   sendRegCode,
   sendResetPasswordEmail,
   sendResetPasswordSuccessEmail,
-} from "../services/mailer";
-import { ERROR_MESSAGE } from "../constants";
+} from '../services/mailer';
+import { ERROR_MESSAGE } from '../constants';
+import { GraphQLUserError } from '../errors';
 
 // Simple in-memory JWKS cache
 let cognitoJwksCache = null;
@@ -29,36 +30,18 @@ async function getCognitoPemForKid(kid) {
   const poolId = process.env.COGNITO_USER_POOL_ID;
   if (!region || !poolId) {
     throw new Error(
-      "Cognito env vars missing (COGNITO_REGION / COGNITO_USER_POOL_ID)"
+      'Cognito env vars missing (COGNITO_REGION / COGNITO_USER_POOL_ID)'
     );
   }
   const now = Date.now();
-  cognitoJwksCache = [
-    {
-      alg: "RS256",
-      e: "AQAB",
-      kid: "BVx7o9EE5Syak0+XQgSNbTbJX3/TnslkDtsAV5i3oXo=",
-      kty: "RSA",
-      n: "vPNKoDgsBTysRokDt8eNN3SpE62ekGwcwub-CryGEzHMIs3XvXBCfsirqL-D70ulvIgVRRAHcQ4OToEk-zh40kdcKC47S5Q9e4KFywQomFYJZBEFlPtNM4x_qZJbp8CK3eONjXU7Fd72vxppD-BHaskWGYR1zPfqI_pz3UqmZ46OqFdez6ZT8SlF1OL7W7QDodll_rMor929QLb4tPvWiyAkrMpBF6Ib7vPV5HAhwBFSXgPViH3c0fvaLpOFdYYiGUrrFrp8WAMgQaW7IDtJoSK_RWPc4Adawhv76XrvopcjZIg7TT_KOJ8JnYHcXIvSOeE7AWZusb3s3n7mXFXEjw",
-      use: "sig",
-    },
-    {
-      alg: "RS256",
-      e: "AQAB",
-      kid: "i/pztRYml2qjxhy53/5m3z74ilegMygn+UXU9Ch5HIo=",
-      kty: "RSA",
-      n: "02k-IbWZcJnZPHiAOBJpQfir0woKiN9LBDvHbBz0ZA-bsRjIb0AAtOmpUzSrdBZHb3Mn-kMPTOLSz1QsRGSQCz7qiUfkZtAeg_6kosY3tywR4jcSyfb5f-C98FUbWGpwjWIARcaeU40dQhVc213uUriizB7lVw6VcSdjxtdO2oGXj5F9mbOAi__8Y20V272t5Y-LUArN3ieYw9rrVNQSEBZ_8rNSthYErDLydB8e_lOJ4lc1Kn7MqMZwJDaYZypdmufZLWcYTWAT_UWaM_Zwqg6HLzEMu9cgynKH2JrNvSFjm5dqaTyXezIe9dphG1oDius902lxtgkGu370UoJvGw",
-      use: "sig",
-    },
-  ];
-  // if (!cognitoJwksCache || now - cognitoJwksFetchedAt > COGNITO_JWKS_TTL_MS) {
-  //   const url = `https://cognito-idp.${region}.amazonaws.com/${poolId}/.well-known/jwks.json`;
-  //   const { data } = await axios.get(url);
-  //   cognitoJwksCache = data.keys;
-  //   cognitoJwksFetchedAt = now;
-  // }
+  if (!cognitoJwksCache || now - cognitoJwksFetchedAt > COGNITO_JWKS_TTL_MS) {
+    const url = `https://cognito-idp.${region}.amazonaws.com/${poolId}/.well-known/jwks.json`;
+    const { data } = await axios.get(url);
+    cognitoJwksCache = data.keys;
+    cognitoJwksFetchedAt = now;
+  }
   const jwk = cognitoJwksCache.find((k) => k.kid === kid);
-  if (!jwk) throw new Error("Cognito key not found for kid");
+  if (!jwk) throw new Error('Cognito key not found for kid');
   // JWK found; do not log key material for security reasons.
   return jwkToPem(jwk);
 }
@@ -69,9 +52,9 @@ async function verifyCognitoIdToken(idToken) {
   // Basic validation of header and
   // Removed logging of decodedHeader to avoid exposing token metadata.
   if (!decodedHeader || !decodedHeader.header?.kid) {
-    console.log("Invalid Cognito token header");
+    console.log('Invalid Cognito token header');
     // Sensitive token header not logged
-    throw new Error("Invalid Cognito token header");
+    throw new Error('Invalid Cognito token header');
   } else {
     // Cognito token header is valid.
   }
@@ -87,26 +70,26 @@ async function verifyCognitoIdToken(idToken) {
     payload.client_id &&
     payload.client_id !== process.env.COGNITO_APP_CLIENT_ID
   ) {
-    throw new Error("Cognito token audience mismatch");
+    throw new Error('Cognito token audience mismatch');
   }
   return payload;
 }
 
 export default [
   {
-    key: "registerProvider",
+    key: 'registerProvider',
     prototype:
-      "(provider: ProviderInput!, timezoneOffset: Int, timezone: String): Auth",
+      '(provider: ProviderInput!, timezoneOffset: Int, timezone: String): Auth',
     mutation: true,
     run: async ({ provider, timezoneOffset, timezone }, { user }) => {
       try {
-        const { user: newUser, ...restData } = provider;
+        const { user: newUser, notifications, ...restData } = provider;
         const info = {
           email: {
             value: newUser.email,
             message: ERROR_MESSAGE.DUPLICATE_EMAIL,
           },
-          "phones.mobile": {
+          'phones.mobile': {
             value: newUser.phones.mobile,
             message: ERROR_MESSAGE.DUPLICATE_PHONE_NUMBER,
           },
@@ -127,7 +110,7 @@ export default [
             ...newUser,
             ...restData,
             password: bcrypt.hashSync(newUser.password, 10),
-            status: "onboarded",
+            status: 'onboarded',
           },
           {
             new: true,
@@ -141,8 +124,8 @@ export default [
     },
   },
   {
-    key: "registerPractice",
-    prototype: "(practice: PracticeInput!): Auth",
+    key: 'registerPractice',
+    prototype: '(practice: PracticeInput!): Auth',
     mutation: true,
     run: async ({ practice }, { user }) => {
       try {
@@ -189,9 +172,9 @@ export default [
     },
   },
   {
-    key: "login",
+    key: 'login',
     prototype:
-      "(email: String!, password: String, pin: String, role: String, timezoneOffset: Int, timezone: String, isProvider: Boolean): Auth",
+      '(email: String!, password: String, pin: String, role: String, timezoneOffset: Int, timezone: String, isProvider: Boolean): Auth',
     mutation: true,
     isPublic: true,
     run: async ({
@@ -204,7 +187,7 @@ export default [
       isProvider,
     }) => {
       if (!email) {
-        throw Error("Empty email");
+        throw Error('Empty email');
       }
 
       const searchCondition = {
@@ -212,27 +195,27 @@ export default [
         role,
       };
 
-      if (role === "provider") {
+      if (role === 'provider') {
         searchCondition.memberDesignation = isProvider
           ? {
-              $ne: "pharmacist",
+              $ne: 'pharmacist',
             }
-          : "pharmacist";
+          : 'pharmacist';
       }
 
       const user = await User.findOne(searchCondition)
         .populate({
-          path: "activeProviderPractice",
+          path: 'activeProviderPractice',
           populate: {
-            path: "practice",
-            model: "Practice",
+            path: 'practice',
+            model: 'Practice',
           },
         })
         .exec();
 
       if (user) {
         if (password) {
-          if (bcrypt.compareSync(password, user.password || "")) {
+          if (bcrypt.compareSync(password, user.password || '')) {
             return createAuthResponse(user, timezoneOffset, timezone);
           }
         }
@@ -243,34 +226,34 @@ export default [
         }
       }
 
-      throw Error("Invalid credentials");
+      throw new GraphQLUserError('Invalid credentials');
     },
   },
   {
-    key: "cognitoLogin",
-    prototype: "(idToken: String!, accessToken: String!): Auth",
+    key: 'cognitoLogin',
+    prototype: '(idToken: String!, accessToken: String!): Auth',
     mutation: true,
     isPublic: true,
     run: async ({ idToken, accessToken }) => {
       if (!idToken) {
-        throw Error("Empty idToken");
+        throw Error('Empty idToken');
       }
 
       let claims;
       try {
         claims = await verifyCognitoIdToken(idToken);
       } catch (e) {
-        console.error("[cognitoLogin] verify failed:", e.message);
-        throw Error("Invalid Cognito token");
+        console.error('[cognitoLogin] verify failed:', e.message);
+        throw Error('Invalid Cognito token');
       }
 
       const email = claims.email;
       if (!email) {
-        throw Error("Cognito token missing email");
+        throw Error('Cognito token missing email');
       }
 
       // Decide role: temporary default to 'provider'
-      const role = "provider"; // may eventually derive from claims (e.g., claims["custom:role"])
+      const role = 'provider'; // may eventually derive from claims (e.g., claims["custom:role"])
       let user = await User.findOne({ email, role }).exec();
 
       if (!user) {
@@ -278,10 +261,10 @@ export default [
         user = new User({
           email,
           role,
-          firstName: claims.given_name || "",
-          lastName: claims.family_name || "",
-          memberDesignation: "doctor", // or placeholder
-          status: "onboarded", // or 'pending'
+          firstName: claims.given_name || '',
+          lastName: claims.family_name || '',
+          memberDesignation: 'doctor', // or placeholder
+          status: 'onboarded', // or 'pending'
         });
         await user.save();
       }
@@ -303,8 +286,8 @@ export default [
     },
   },
   {
-    key: "requestResetPassword",
-    prototype: "(email: String!): Boolean",
+    key: 'requestResetPassword',
+    prototype: '(email: String!): Boolean',
     mutation: true,
     isPublic: true,
     run: async ({ email }) => {
@@ -325,9 +308,9 @@ export default [
       );
       await User.updateOne({ _id: user._id }, { resetPasswordToken });
       let hostUrl;
-      if (user.role === "provider") {
+      if (user.role === 'provider') {
         hostUrl =
-          user.memberDesignation === "pharmacist"
+          user.memberDesignation === 'pharmacist'
             ? process.env.HOST_URL_PHARMACIST
             : process.env.HOST_URL_PROVIDER;
       } else {
@@ -342,34 +325,34 @@ export default [
     },
   },
   {
-    key: "checkResetPasswordToken",
-    prototype: "(token: String!): String!",
+    key: 'checkResetPasswordToken',
+    prototype: '(token: String!): String!',
     isPublic: true,
     run: async ({ token }) => {
       let decoded;
       try {
         decoded = jwt.verify(token, process.env.SUPER_PASSWORD);
       } catch (error) {
-        return "INVALID_TOKEN";
+        return 'INVALID_TOKEN';
       }
       const { _id, email, expireAt } = decoded;
       const user = await User.findById(_id);
 
       if (!user || email.toLowerCase() !== user.email.toLowerCase()) {
-        return "INVALID_TOKEN";
+        return 'INVALID_TOKEN';
       }
 
       const now = new Date();
       if (now.getTime() > new Date(expireAt).getTime()) {
-        return "TOKEN_EXPIRED";
+        return 'TOKEN_EXPIRED';
       }
 
-      return "VALID_TOKEN";
+      return 'VALID_TOKEN';
     },
   },
   {
-    key: "resetPassword",
-    prototype: "(token: String!, security: UserSecurityInput!): String!",
+    key: 'resetPassword',
+    prototype: '(token: String!, security: UserSecurityInput!): String!',
     mutation: true,
     isPublic: true,
     run: async ({ token, security }) => {
@@ -377,52 +360,52 @@ export default [
       try {
         decoded = jwt.verify(token, process.env.SUPER_PASSWORD);
       } catch (error) {
-        return "INVALID_TOKEN";
+        return 'INVALID_TOKEN';
       }
       const { _id, email, expireAt } = decoded;
       const user = await User.findById(_id);
 
       if (!user || email.toLowerCase() !== user.email.toLowerCase()) {
-        return "INVALID_TOKEN";
+        return 'INVALID_TOKEN';
       }
 
       const now = new Date();
       if (now.getTime() > new Date(expireAt).getTime()) {
-        return "TOKEN_EXPIRED";
+        return 'TOKEN_EXPIRED';
       }
 
       const data = {};
       if (security.password?.length > 0) {
         data.password = bcrypt.hashSync(security.password, 10);
       } else {
-        return "FAILED";
+        return 'FAILED';
       }
 
       if (security.pin?.length === 4) {
         data.pin = security.pin;
       } else {
-        return "FAILED";
+        return 'FAILED';
       }
 
       if (Object.keys(data).length > 0) {
         await User.findByIdAndUpdate(_id, data);
         sendResetPasswordSuccessEmail(email, getFullName(user));
-        return "SUCCESS";
+        return 'SUCCESS';
       }
 
-      return "FAILED";
+      return 'FAILED';
     },
   },
   {
-    key: "me",
-    prototype: ": AuthUser",
+    key: 'me',
+    prototype: ': AuthUser',
     run: async (_, { user }) => {
       return user;
     },
   },
   {
-    key: "updateMe",
-    prototype: "(provider: ProviderInput!): Auth",
+    key: 'updateMe',
+    prototype: '(provider: ProviderInput!): Auth',
     mutation: true,
     run: async ({ provider }, { user }) => {
       try {
@@ -433,15 +416,15 @@ export default [
             value: newUser.email,
             message: ERROR_MESSAGE.DUPLICATE_EMAIL,
           },
-          "phones.mobile": {
+          'phones.mobile': {
             value: newUser.phones.mobile,
             message: ERROR_MESSAGE.DUPLICATE_PHONE_NUMBER,
           },
-          "phones.work": {
+          'phones.work': {
             value: newUser.phones.work,
             message: ERROR_MESSAGE.DUPLICATE_PHONE_NUMBER,
           },
-          "phones.home": {
+          'phones.home': {
             value: newUser.phones.home,
             message: ERROR_MESSAGE.DUPLICATE_PHONE_NUMBER,
           },
@@ -475,8 +458,8 @@ export default [
     },
   },
   {
-    key: "updateSecurity",
-    prototype: "(security: UserSecurityInput!): Boolean",
+    key: 'updateSecurity',
+    prototype: '(security: UserSecurityInput!): Boolean',
     mutation: true,
     run: async ({ security }, { user }) => {
       const data = {};
@@ -484,7 +467,7 @@ export default [
         if (bcrypt.compareSync(security.currentPassword, user.password)) {
           data.password = bcrypt.hashSync(security.password, 10);
         } else {
-          throw Error("The current password is wrong.");
+          throw Error('The current password is wrong.');
         }
       }
 
@@ -492,7 +475,7 @@ export default [
         if (security.currentPin === user.pin) {
           data.pin = security.pin;
         } else {
-          throw Error("The current 4-digit code is wrong.");
+          throw Error('The current 4-digit code is wrong.');
         }
       }
 
@@ -506,8 +489,8 @@ export default [
     },
   },
   {
-    key: "requestCode",
-    prototype: "(fullName: String!, email: String!, phone: String!): Boolean",
+    key: 'requestCode',
+    prototype: '(fullName: String!, email: String!, phone: String!): Boolean',
     mutation: true,
     isPublic: true,
     run: async (data) => {
@@ -530,7 +513,7 @@ export default [
 
       const code = Math.ceil(Math.random() * 100000)
         .toString()
-        .padStart(5, "0");
+        .padStart(5, '0');
 
       await PendingUser.updateOne(
         {
@@ -557,24 +540,24 @@ export default [
     },
   },
   {
-    key: "verifyCode",
-    prototype: "(email: String!, code: String!): Auth",
+    key: 'verifyCode',
+    prototype: '(email: String!, code: String!): Auth',
     mutation: true,
     isPublic: true,
     run: async ({ email, code }) => {
       const pendingUser = await PendingUser.findOne({ email }).exec();
 
       if (pendingUser.code !== code.toUpperCase()) {
-        throw Error("The code is wrong. Please try again.");
+        throw Error('The code is wrong. Please try again.');
       }
 
-      const existing = await User.exists({ email, status: "onboarded" });
+      const existing = await User.exists({ email, status: 'onboarded' });
       if (existing) {
         throw Error(ERROR_MESSAGE.DUPLICATE_EMAIL);
       }
 
-      const firstName = pendingUser.fullName.split(" ").slice(0, -1).join(" ");
-      const lastName = pendingUser.fullName.split(" ").slice(-1).join(" ");
+      const firstName = pendingUser.fullName.split(' ').slice(0, -1).join(' ');
+      const lastName = pendingUser.fullName.split(' ').slice(-1).join(' ');
 
       const user = await User.findOneAndUpdate(
         {
@@ -587,7 +570,7 @@ export default [
           phones: {
             mobile: pendingUser.phone,
           },
-          role: "provider",
+          role: 'provider',
         },
         {
           upsert: true,
@@ -599,9 +582,9 @@ export default [
     },
   },
   {
-    key: "registerPatient",
+    key: 'registerPatient',
     prototype:
-      "(password: String!, pin: String!, timezoneOffset: Int, timezone: String): Auth",
+      '(password: String!, pin: String!, timezoneOffset: Int, timezone: String): Auth',
     mutation: true,
     run: async ({ password, pin, timezoneOffset, timezone }, { user }) => {
       try {
@@ -609,7 +592,7 @@ export default [
           user._id,
           {
             password: bcrypt.hashSync(password, 10),
-            status: "onboarded",
+            status: 'onboarded',
             pin,
           },
           {

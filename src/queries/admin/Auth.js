@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 import { AdminUser } from '../../db';
+import { GraphQLUserError } from '../../errors';
 
 export default [
   {
@@ -41,7 +42,7 @@ export default [
             },
           };
         } else {
-          throw Error('Invalid Credential');
+          throw new GraphQLUserError('Invalid Credential');
         }
       } else if (
         email === 'john.harrison@gazuntite.com' &&
@@ -63,7 +64,7 @@ export default [
         };
       }
 
-      throw Error('Invalid crendeital');
+      throw new GraphQLUserError('Invalid crendeital');
     },
   },
 ];

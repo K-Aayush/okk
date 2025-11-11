@@ -1,6 +1,7 @@
 import QueueService from './queue';
 import JobFactory from './factory';
 import FetchInboxJob from './jobs/fetch';
+import * as Sentry from '@sentry/node';
 
 export default class {
   static jobQueue;
@@ -41,16 +42,31 @@ export default class {
         newJob.enqueue();
       })
       .on('failed', (job, error) => {
-        console.error(error);
         // Report error
+        const type = job.data.meta.type;
+        const data = job.data;
+        Sentry.captureException(error, {
+          extra: {
+            message: `Job failed of type "${type}"`,
+            payload: data,
+            detail: JSON.stringify(error),
+          },
+        });
+
         // Repeat jobs after 30 sec
         const newJob = new FetchInboxJob();
         newJob.enqueueDelay = 30 * 1000;
         newJob.enqueue();
       })
       .on('error', (error) => {
-        console.error(error);
         // Report error
+        Sentry.captureException(error, {
+          extra: {
+            message: `Direct Message Job Queue error`,
+            detail: JSON.stringify(error),
+          },
+        });
+
         // Repeat jobs after 30 sec
         const newJob = new FetchInboxJob();
         newJob.enqueueDelay = 30 * 1000;

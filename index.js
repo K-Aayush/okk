@@ -6,6 +6,7 @@ import http from 'http';
 import GraphQLDate from 'graphql-date';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import bodyParser from 'body-parser';
+import * as Sentry from '@sentry/node';
 
 dotenv.config();
 
@@ -21,9 +22,14 @@ import socketManager from './src/services/socket-manager';
 import GraphQLJSON, { GraphQLJSONObject } from 'graphql-type-json';
 
 import BackgroundJobService from './src/backgroundJobs/processor';
+import { GraphQLUserError } from './src/errors';
 
 const { graphqlHTTP } = expressGraphql;
 const app = express();
+
+Sentry.init({
+  dsn: process.env.SENTRY_IO_DSN,
+});
 
 app.use(
   cors({
@@ -87,6 +93,31 @@ app.use(
       rootValue: root,
       graphiql: {
         headerEditorEnabled: true,
+      },
+      customFormatErrorFn: (err) => {
+        // Capture original error (if available)
+        const originalError = err.originalError || err;
+
+        if (!(originalError instanceof GraphQLUserError)) {
+          // Send to Sentry
+          Sentry.captureException(originalError, {
+            level: 'error',
+            extra: {
+              message: originalError.message || err.message,
+              path: err.path,
+              locations: err.locations,
+              extensions: err.extensions,
+              detail: JSON.stringify(originalError),
+            },
+          });
+        }
+
+        // Return formatted error to client
+        return {
+          message: err.message,
+          path: err.path,
+          extensions: err.extensions,
+        };
       },
       context: { user },
     };
@@ -176,4 +207,9 @@ connect(process.env.DB_URI)
   })
   .catch((error) => {
     console.error(error);
+    Sentry.captureException(error, {
+      extra: {
+        message: 'Initiating DB connection',
+      },
+    });
   });

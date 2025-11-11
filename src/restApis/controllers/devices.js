@@ -18,7 +18,6 @@ class DevicesController {
       const { body } = request;
       await this._processDevicePayload('scale', body, response);
     } catch (error) {
-      console.error(error);
       response.status(400).send({ error });
     }
   }
@@ -28,7 +27,6 @@ class DevicesController {
       const { body } = request;
       await this._processDevicePayload('bpm', body, response);
     } catch (error) {
-      console.error(error?.toString());
       response.status(400).send({ error: error?.toString() });
     }
   }

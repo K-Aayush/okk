@@ -26,6 +26,7 @@ import socketManager from '../services/socket-manager';
 import SOCKET_EVENTS from '../services/socket-manager/constants';
 import { sendDMResponseSMS } from '../services/twilio';
 import { sendDMResponseEmail } from '../services/mailer';
+import * as Sentry from '@sentry/node';
 
 export default [
   {
@@ -173,7 +174,7 @@ export default [
             providerpractices: {
               $elemMatch: {
                 user: user._id,
-                isLicensed: true,
+                // isLicensed: true,
                 deactivated: { $ne: true },
               },
             },
@@ -400,7 +401,17 @@ export default [
         //   pdfBuffer.toString('base64')
         // );
       } catch (error) {
-        console.error(error);
+        // Report error
+        Sentry.captureException(error, {
+          extra: {
+            message: 'Direct message query error',
+            payload: {
+              noteId,
+              to,
+            },
+            detail: JSON.stringify(error),
+          },
+        });
         return false;
       }
       return true;

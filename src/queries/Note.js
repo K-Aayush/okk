@@ -14,6 +14,7 @@ import {
   base64ToBuffer,
   populateNote,
 } from '../utils';
+import { GraphQLUserError } from '../errors';
 
 const populateNoteQuery = (result) => {
   return Note.populate(result, [
@@ -676,6 +677,25 @@ export default [
         patient: note.user,
       });
 
+      return true;
+    },
+  },
+  {
+    key: 'deleteNoteDraft',
+    prototype: '(note: ID!): Boolean',
+    mutation: true,
+    run: async ({ note: noteId }, { user }) => {
+      const note = await Note.findById(noteId);
+      if (!note) {
+        throw new GraphQLUserError('Note not found!');
+      }
+      if (!note.isDraft && note.signDate) {
+        throw new GraphQLUserError(
+          'Note is already signed and can not be deleted!'
+        );
+      }
+      await Note.deleteOne({ _id: noteId });
+      socketManager.sendMessage(user._id, SOCKET_EVENTS.PATIENT_NOTES);
       return true;
     },
   },

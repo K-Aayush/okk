@@ -23,6 +23,7 @@ import eFaxQueries from './EFax';
 import medicalLicenseQueries from './MedicalLicense';
 import practiceQueries from './Practice';
 import providerQueries from './Provider';
+import { GraphQLUserError } from '../errors';
 
 const allQueries = [
   ...authQueries,
@@ -54,7 +55,7 @@ const allQueries = [
 
 const authenticate = (func, isPublic) => (args, context) => {
   if (!isPublic && !context.user) {
-    throw new Error('Invalid Auth!');
+    throw new GraphQLUserError('Invalid Auth!');
   }
   return func(args, context);
 };

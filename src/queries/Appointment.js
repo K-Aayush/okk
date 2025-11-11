@@ -112,6 +112,7 @@ export default [
           },
           { session }
         );
+        cancelBackgroundJob(appointmentId);
         newAppointmentId = await addAppointment(
           user._id,
           patient,
