@@ -15,6 +15,7 @@ import textract from 'textract';
 import socketManager from '../../services/socket-manager';
 import SOCKET_EVENTS from '../../services/socket-manager/constants';
 import xml2json from 'xml2js';
+import { XMLParser } from 'fast-xml-parser';
 import {
   sendNotificationEmailAndSMSForNewDM,
   sendNotificationEmailAndSMSForNewDMtoPCP,
@@ -95,6 +96,9 @@ class MaxMDService {
     }
     let attachmentInfo;
     let patientInfo;
+    let ccdaData = null;
+    const additionalFiles = [];
+
     const s3 = new S3({
       region: process.env.AWS_REGION,
       credentials: fromEnv(),
@@ -137,24 +141,27 @@ class MaxMDService {
             Body: attachmentBody,
           },
         }).done();
-        attachmentInfo = {
-          fileName: attachment.filename,
-          contentType: attachment.contentType,
-          fileUrl: response.Location,
-        };
+        // Store file info based on type
         if (attachment.contentType.toLowerCase().includes('text/xml')) {
-          //MaxMD attachment.contentType format is 'text/xml; name=**filename.xml**'
-          patientInfo = await this.processXMLAttachment(
-            attachmentBody.toString(),
-            'xml'
-          );
+          attachmentInfo = {
+            fileName: attachment.filename,
+            contentType: attachment.contentType,
+            fileUrl: response.Location,
+          };
+
+          // Parse CCDA data
+          const xmlString = attachmentBody.toString();
+          patientInfo = await this.processXMLAttachment(xmlString, 'xml');
+          ccdaData = await this.parseCCDAData(xmlString, this.specialty);
         } else if (
           attachment.contentType.toLowerCase().includes('application/pdf')
         ) {
-          // patientInfo = await this.processPDFAttachment(attachmentBody, 'pdf');
-        }
-        if (!!attachmentInfo && !!patientInfo) {
-          break;
+          // Store additional PDF files
+          additionalFiles.push({
+            fileName: attachment.filename,
+            fileUrl: response.Location,
+            contentType: attachment.contentType,
+          });
         }
       } catch (err) {
         Sentry.captureException(err, {
@@ -237,9 +244,270 @@ class MaxMDService {
         subject: messageDetail.subject,
         specialty: this.specialty,
         createTime: messageDetail.receivedDate,
+        ccda: ccdaData,
       },
     ]);
     return messageItem[0];
+  }
+
+  //Parse CCDA data and extract snapshot
+  async parseCCDAData(xmlString, specialty) {
+    try {
+      // Parse XML to JSON using fast-xml-parser
+      const parser = new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: '@_',
+      });
+      const parsedData = parser.parse(xmlString);
+
+      // Detect CCDA version
+      const version = this._detectCCDAVersion(parsedData);
+
+      // Extract snapshot data based on specialty
+      const snapshot = this._extractCCDASnapshot(parsedData, specialty);
+
+      return {
+        rawXml: xmlString,
+        parsedData: parsedData,
+        version: version,
+        snapshot: snapshot,
+        parseStatus: 'success',
+        parsedAt: new Date(),
+      };
+    } catch (error) {
+      Sentry.captureException(error, {
+        extra: {
+          message: 'Error parsing CCDA data',
+          detail: JSON.stringify(error),
+        },
+      });
+
+      return {
+        rawXml: xmlString,
+        parsedData: null,
+        version: null,
+        snapshot: null,
+        parseStatus: 'failed',
+        parseError: error.message,
+        parsedAt: new Date(),
+      };
+    }
+  }
+
+  // Detect CCDA version
+  _detectCCDAVersion(parsedData) {
+    try {
+      const templateId = parsedData?.ClinicalDocument?.templateId;
+      if (Array.isArray(templateId)) {
+        for (const template of templateId) {
+          if (template['@_root'] === '2.16.840.1.113883.10.20.22.1.1') {
+            // C-CDA version 2.x
+            return '2.0';
+          } else if (template['@_root'] === '2.16.840.1.113883.10.20.22.1.2') {
+            // C-CDA version 3.x
+            return '3.0';
+          }
+        }
+      }
+      return 'unknown';
+    } catch (error) {
+      return 'unknown';
+    }
+  }
+
+  // Extract snapshot for UI display
+  _extractCCDASnapshot(parsedData, specialty) {
+    try {
+      const components =
+        parsedData?.ClinicalDocument?.component?.structuredBody?.component ||
+        [];
+
+      const snapshot = {
+        reasonForReferral: null,
+        problems: [],
+        procedures: [],
+        medications: [],
+        allergies: [],
+        customSections: [],
+      };
+
+      // Extract key sections
+      for (const comp of components) {
+        const section = comp.section;
+        const sectionCode = section?.code?.['@_code'];
+        const sectionTitle = section?.title;
+
+        // Reason for Referral
+        if (
+          sectionCode === '42349-1' ||
+          sectionTitle === 'REASON FOR REFERRAL'
+        ) {
+          snapshot.reasonForReferral = this._extractReasonForReferral(section);
+        }
+
+        // Problems
+        if (sectionCode === '11450-4' || sectionTitle === 'PROBLEM LIST') {
+          snapshot.problems = this._extractProblems(section);
+        }
+
+        // Procedures
+        if (sectionCode === '47519-4' || sectionTitle === 'PROCEDURES') {
+          snapshot.procedures = this._extractProcedures(section);
+        }
+
+        // Medications
+        if (sectionCode === '10160-0' || sectionTitle === 'MEDICATIONS') {
+          snapshot.medications = this._extractMedications(section);
+        }
+
+        // Allergies
+        if (sectionCode === '48765-2' || sectionTitle === 'ALLERGIES') {
+          snapshot.allergies = this._extractAllergies(section);
+        }
+      }
+
+      // Limit to top 5 items per section for snapshot
+      snapshot.problems = snapshot.problems.slice(0, 5);
+      snapshot.procedures = snapshot.procedures.slice(0, 5);
+      snapshot.medications = snapshot.medications.slice(0, 5);
+      snapshot.allergies = snapshot.allergies.slice(0, 5);
+
+      return snapshot;
+    } catch (error) {
+      Sentry.captureException(error, {
+        extra: {
+          message: 'Error extracting CCDA snapshot',
+          detail: JSON.stringify(error),
+        },
+      });
+      return null;
+    }
+  }
+
+  // Helper methods for extracting specific sections
+  _extractReasonForReferral(section) {
+    try {
+      const entry = section?.entry?.[0];
+      const observation = entry?.observation;
+      const value = observation?.value;
+
+      return {
+        code: value?.['@_code'] || null,
+        display: value?.['@_displayName'] || section?.text || null,
+        system: value?.['@_codeSystem'] || null,
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  _extractProblems(section) {
+    try {
+      const entries = section?.entry || [];
+      const problems = [];
+
+      for (const entry of entries) {
+        const observation = entry?.act?.entryRelationship?.observation;
+        const value = observation?.value;
+
+        if (value) {
+          problems.push({
+            code: value?.['@_code'] || null,
+            display: value?.['@_displayName'] || null,
+            system: value?.['@_codeSystem'] || null,
+            onsetDate: observation?.effectiveTime?.low?.['@_value'] || null,
+          });
+        }
+      }
+
+      return problems;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  _extractProcedures(section) {
+    try {
+      const entries = section?.entry || [];
+      const procedures = [];
+
+      for (const entry of entries) {
+        const procedure = entry?.procedure;
+        const code = procedure?.code;
+
+        if (code) {
+          procedures.push({
+            code: code?.['@_code'] || null,
+            display: code?.['@_displayName'] || null,
+            system: code?.['@_codeSystem'] || null,
+            date: procedure?.effectiveTime?.['@_value'] || null,
+          });
+        }
+      }
+
+      return procedures;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  _extractMedications(section) {
+    try {
+      const entries = section?.entry || [];
+      const medications = [];
+
+      for (const entry of entries) {
+        const substanceAdministration = entry?.substanceAdministration;
+        const manufacturedProduct =
+          substanceAdministration?.consumable?.manufacturedProduct;
+        const code = manufacturedProduct?.manufacturedMaterial?.code;
+
+        if (code) {
+          medications.push({
+            code: code?.['@_code'] || null,
+            display: code?.['@_displayName'] || null,
+            dosage: substanceAdministration?.doseQuantity?.['@_value'] || null,
+            startDate:
+              substanceAdministration?.effectiveTime?.low?.['@_value'] || null,
+          });
+        }
+      }
+
+      return medications;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  _extractAllergies(section) {
+    try {
+      const entries = section?.entry || [];
+      const allergies = [];
+
+      for (const entry of entries) {
+        const observation = entry?.act?.entryRelationship?.observation;
+        const participant = observation?.participant;
+        const code = participant?.participantRole?.playingEntity?.code;
+
+        if (code) {
+          allergies.push({
+            code: code?.['@_code'] || null,
+            display: code?.['@_displayName'] || null,
+            reaction:
+              observation?.entryRelationship?.observation?.value?.[
+                '@_displayName'
+              ] || null,
+            severity:
+              observation?.entryRelationship?.observation?.value?.['@_code'] ||
+              null,
+          });
+        }
+      }
+
+      return allergies;
+    } catch (error) {
+      return [];
+    }
   }
 
   async processPDFAttachment(content) {

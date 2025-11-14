@@ -7,11 +7,11 @@ import {
   User,
   Specialty,
   DirectMessageInboxItem,
-} from "../db";
+} from '../db';
 import {
   checkPhoneVerficationRequestPromise,
   requestVerification,
-} from "../services/twilio";
+} from '../services/twilio';
 
 const fetchNewInviteCount = async (user) => {
   const individualInviteCount = await Invite.countDocuments({
@@ -28,14 +28,14 @@ const fetchNewInviteCount = async (user) => {
       },
       {
         $lookup: {
-          from: "invites",
-          let: { practice: "$practice" },
-          as: "invites",
+          from: 'invites',
+          let: { practice: '$practice' },
+          as: 'invites',
           pipeline: [
             {
               $match: {
                 $expr: {
-                  $eq: ["$$practice", "$practice"],
+                  $eq: ['$$practice', '$practice'],
                 },
               },
             },
@@ -43,10 +43,10 @@ const fetchNewInviteCount = async (user) => {
               $group: {
                 _id: null,
                 received: {
-                  $sum: { $cond: [{ $ifNull: ["$invitee", false] }, 0, 1] },
+                  $sum: { $cond: [{ $ifNull: ['$invitee', false] }, 0, 1] },
                 },
                 sent: {
-                  $sum: { $cond: [{ $ifNull: ["$invitee", false] }, 1, 0] },
+                  $sum: { $cond: [{ $ifNull: ['$invitee', false] }, 1, 0] },
                 },
               },
             },
@@ -55,23 +55,23 @@ const fetchNewInviteCount = async (user) => {
       },
       {
         $lookup: {
-          from: "practices",
-          localField: "practice",
-          foreignField: "_id",
-          as: "practice",
+          from: 'practices',
+          localField: 'practice',
+          foreignField: '_id',
+          as: 'practice',
         },
       },
       {
-        $unwind: "$practice",
+        $unwind: '$practice',
       },
       {
         $project: {
           practice: 1,
           totalReceived: {
-            $ifNull: [{ $first: "$invites.received" }, 0],
+            $ifNull: [{ $first: '$invites.received' }, 0],
           },
           totalSent: {
-            $ifNull: [{ $first: "$invites.sent" }, 0],
+            $ifNull: [{ $first: '$invites.sent' }, 0],
           },
         },
       },
@@ -94,10 +94,10 @@ const fetchNewReportCount = async (userId) => {
 
 const fetchNewNoteCount = async (user) => {
   const conditions = { seen: { $ne: user._id }, isDraft: false };
-  if (user.role === "provider") {
-    conditions["$or"] = [
+  if (user.role === 'provider') {
+    conditions['$or'] = [
       {
-        "shares.with":
+        'shares.with':
           user.activeProviderPractice?._id || user.activeProviderPractice,
       },
     ];
@@ -109,10 +109,10 @@ const fetchNewNoteCount = async (user) => {
 
 const fetchNewCareplanCount = async (user) => {
   const conditions = { seen: { $ne: user._id }, isActive: true };
-  if (user.role === "provider") {
-    conditions["$or"] = [
+  if (user.role === 'provider') {
+    conditions['$or'] = [
       {
-        "shares.with":
+        'shares.with':
           user.activeProviderPractice?._id || user.activeProviderPractice,
       },
     ];
@@ -123,19 +123,19 @@ const fetchNewCareplanCount = async (user) => {
 };
 
 const fetchNewCoordinateCount = async (user) => {
-  if (user.role !== "provider") {
+  if (user.role !== 'provider') {
     return 0;
   }
 
   if (
     user.activeProviderPractice?.practice?.isGazuntitePractice &&
-    user.specialty !== "PCP"
+    user.specialty !== 'PCP'
   ) {
     let newCount = await Note.countDocuments({
       creator: {
         $ne: user.activeProviderPractice?._id || user.activeProviderPractice,
       },
-      "shares.with":
+      'shares.with':
         user.activeProviderPractice?._id || user.activeProviderPractice,
       seen: { $ne: user._id },
     });
@@ -143,14 +143,14 @@ const fetchNewCoordinateCount = async (user) => {
       creator: {
         $ne: user.activeProviderPractice?._id || user.activeProviderPractice,
       },
-      "shares.with":
+      'shares.with':
         user.activeProviderPractice?._id || user.activeProviderPractice,
       seen: { $ne: user._id },
     });
     const conditions = { note: null };
     if (user.specialty && !user.activeProviderPractice.disableTracking) {
-      if (user.specialty === "Cardiologist") {
-        conditions.specialty = { $in: ["Cardiologist", "E-Consult"] };
+      if (user.specialty === 'Cardiologist') {
+        conditions.specialty = { $in: ['Cardiologist', 'E-Consult'] };
       } else {
         conditions.specialty = user.specialty;
       }
@@ -161,10 +161,10 @@ const fetchNewCoordinateCount = async (user) => {
       },
       {
         $lookup: {
-          from: "providerpractices",
-          localField: "practice",
-          foreignField: "practice",
-          as: "providerpractices",
+          from: 'providerpractices',
+          localField: 'practice',
+          foreignField: 'practice',
+          as: 'providerpractices',
         },
       },
       {
@@ -191,11 +191,11 @@ const fetchNewCoordinateCount = async (user) => {
     signDate: { $exists: true },
     $or: [
       {
-        "shares.with":
+        'shares.with':
           user.activeProviderPractice?._id || user.activeProviderPractice,
       },
       {
-        "directMessageShare.to":
+        'directMessageShare.to':
           user.activeProviderPractice?._id || user.activeProviderPractice,
       },
     ],
@@ -224,20 +224,20 @@ const fetchNewPrescribeCount = async (userId) => {
 
 export default [
   {
-    key: "user",
-    prototype: "(id: String!): User",
+    key: 'user',
+    prototype: '(id: String!): User',
     run: async ({ id }) => {
       const user = await User.findById(id).populate({
-        path: "activeProviderPractice",
-        populate: "practice",
+        path: 'activeProviderPractice',
+        populate: 'practice',
       });
 
       return user;
     },
   },
   {
-    key: "phoneVerifyStatus",
-    prototype: ": PhoneVerifyStatus",
+    key: 'phoneVerifyStatus',
+    prototype: ': PhoneVerifyStatus',
     run: async ({}, { user }) => {
       const phones = user.phones;
       const verifyStatus = {
@@ -248,7 +248,7 @@ export default [
       const checkVerificationRequestPromises = [];
       Object.keys(verifyStatus).forEach((type) => {
         const number =
-          type !== "work"
+          type !== 'work'
             ? phones[type]
             : user.activeProviderPractice.practice.phone;
         if (!number) {
@@ -268,8 +268,8 @@ export default [
     },
   },
   {
-    key: "initVerifyNumber",
-    prototype: "(number: String!): String",
+    key: 'initVerifyNumber',
+    prototype: '(number: String!): String',
     mutation: true,
     run: async ({ number }, { user }) => {
       const result = await requestVerification(number);
@@ -277,8 +277,8 @@ export default [
     },
   },
   {
-    key: "updateCallMasking",
-    prototype: "(masking: String!): User",
+    key: 'updateCallMasking',
+    prototype: '(masking: String!): User',
     mutation: true,
     run: async ({ masking }, { user }) => {
       const updated = await User.findByIdAndUpdate(
@@ -286,7 +286,7 @@ export default [
         {
           phones: {
             ...user.phones,
-            masking: masking !== "off" ? masking : null,
+            masking: masking !== 'off' ? masking : null,
           },
         },
         { new: true }
@@ -295,8 +295,8 @@ export default [
     },
   },
   {
-    key: "saveRecentPatients",
-    prototype: "(recentPatients: [String!]): [User]",
+    key: 'saveRecentPatients',
+    prototype: '(recentPatients: [String!]): [User]',
     mutation: true,
     run: async ({ recentPatients }, { user }) => {
       await User.findByIdAndUpdate(user._id, {
@@ -313,11 +313,11 @@ export default [
     },
   },
   {
-    key: "recentPatients",
-    prototype: ": [User]",
+    key: 'recentPatients',
+    prototype: ': [User]',
     run: async ({}, { user }) => {
       const patientIds = await User.findOne({ _id: user._id }, { _id: false })
-        .select("recentPatients")
+        .select('recentPatients')
         .exec();
 
       const option = {
@@ -330,8 +330,8 @@ export default [
     },
   },
   {
-    key: "allNewItemsCount",
-    prototype: ": UserNewItemsCount",
+    key: 'allNewItemsCount',
+    prototype: ': UserNewItemsCount',
     run: async ({}, { user }) => {
       const itemCounts = {};
       await Promise.all([
@@ -387,7 +387,7 @@ export default [
           try {
             itemCounts.alert = await fetchNewAlertCount(
               user._id,
-              user.role === "provider"
+              user.role === 'provider'
             );
           } catch (error) {
             itemCounts.alert = 0;
@@ -407,67 +407,67 @@ export default [
     },
   },
   {
-    key: "inviteCount",
-    prototype: ": InviteCount!",
+    key: 'inviteCount',
+    prototype: ': InviteCount!',
     run: async ({}, { user }) => {
       return await fetchNewInviteCount(user);
     },
   },
   {
-    key: "reportCount",
-    prototype: ": Int",
+    key: 'reportCount',
+    prototype: ': Int',
     run: async ({}, { user }) => {
       return await fetchNewReportCount(user._id);
     },
   },
   {
-    key: "noteCount",
-    prototype: ": Int",
+    key: 'noteCount',
+    prototype: ': Int',
     run: async ({}, { user }) => {
       return await fetchNewNoteCount(user);
     },
   },
   {
-    key: "careplanCount",
-    prototype: ": Int",
+    key: 'careplanCount',
+    prototype: ': Int',
     run: async ({}, { user }) => {
       return await fetchNewCareplanCount(user);
     },
   },
   {
-    key: "coordinateCount",
-    prototype: ": Int",
+    key: 'coordinateCount',
+    prototype: ': Int',
     run: async ({}, { user }) => {
       return await fetchNewCoordinateCount(user);
     },
   },
   {
-    key: "callCount",
-    prototype: ": Int",
+    key: 'callCount',
+    prototype: ': Int',
     run: async ({}, { user }) => {
       return await fetchNewCallCount(user._id);
     },
   },
   {
-    key: "alertCount",
-    prototype: ": Int",
+    key: 'alertCount',
+    prototype: ': Int',
     run: async ({}, { user }) => {
-      return await fetchNewAlertCount(user._id, user.role === "provider");
+      return await fetchNewAlertCount(user._id, user.role === 'provider');
     },
   },
   {
-    key: "prescribeCount",
-    prototype: ": Int",
+    key: 'prescribeCount',
+    prototype: ': Int',
     run: async ({}, { user }) => {
       return await fetchNewPrescribeCount(user._id);
     },
   },
   {
-    key: "updateBilling",
-    prototype: "(time: Int!, therapeutic: Int!, physiologic: Int!): Boolean",
+    key: 'updateBilling',
+    prototype: '(time: Int!, therapeutic: Int!, physiologic: Int!): Boolean',
     mutation: true,
     run: async ({ time, therapeutic, physiologic }, { user }) => {
-      if (user.role !== "provider") {
+      if (user.role !== 'provider') {
         return false;
       }
       await ProviderPractice.update(
@@ -479,8 +479,8 @@ export default [
     },
   },
   {
-    key: "specialties",
-    prototype: ":[String!]",
+    key: 'specialties',
+    prototype: ':[String!]',
     isPublic: true,
     run: async () => {
       const specialties = await Specialty.find().lean();
@@ -488,22 +488,22 @@ export default [
     },
   },
   {
-    key: "updateSpecialty",
-    prototype: "(specialty: String!): AuthUser!",
+    key: 'updateSpecialty',
+    prototype: '(specialty: String!): AuthUser!',
     mutation: true,
     run: async ({ specialty }, { user }) => {
-      if (user.role !== "provider") {
-        throw new Error("Only providers can update their specialty");
+      if (user.role !== 'provider') {
+        throw new Error('Only providers can update their specialty');
       }
       const updatedUser = await User.findByIdAndUpdate(user._id, { specialty });
       return updatedUser;
     },
   },
   {
-    key: "userSignature",
-    prototype: ": UserSignature",
+    key: 'userSignature',
+    prototype: ': UserSignature',
     run: async ({}, { user }) => {
-      if (user.role !== "provider") {
+      if (user.role !== 'provider') {
         return { saveSignature: false, signature: null };
       }
 
@@ -519,22 +519,6 @@ export default [
       } catch (error) {
         return { saveSignature: false, signature: null };
       }
-    },
-  },
-  {
-    key: "createUser",
-    prototype:
-      "(email: String!, password: String!, firstName: String!, lastName: String!): User",
-    mutation: true,
-    run: async ({ email, password, firstName, lastName }) => {
-      const newUser = new User({
-        email,
-        password,
-        firstName,
-        lastName,
-      });
-      await newUser.save();
-      return newUser;
     },
   },
 ];
